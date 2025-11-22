@@ -10,6 +10,7 @@
 - **👀 预览模式** - 执行前显示将要删除的插件列表
 - **⚡ 纯内存处理** - 无需数据库，即开即用
 - **🎯 零配置** - 开箱即用，无需任何配置
+- **🔄 智能去重** - Windows大小写不敏感，自动去重路径
 
 ## 📦 使用方法
 
@@ -31,8 +32,11 @@ cleaner.run()
 
 ### 自动识别路径
 工具会自动搜索以下位置：
+- **Windows注册表** - 优先从注册表查找Eclipse安装信息
+- **开始菜单** - 搜索Eclipse快捷方式获取安装路径
+- **全盘扫描** - Windows下遍历所有盘符（A-Z）查找Eclipse
 - 当前目录及其父目录
-- 常见安装位置：`C:/eclipse`, `D:/Eclipse`, `/opt/eclipse` 等
+- 常见安装位置：`Program Files/Eclipse`, `Dev/eclipse`, `Tools/eclipse` 等
 - 用户目录：`~/eclipse`, `~/Eclipse`
 - 插件目录：`plugins/`, `dropins/`
 
@@ -72,3 +76,84 @@ cleaner.run()
 ## 📄 许可证
 
 本项目采用 MIT 许可证，可自由使用和修改。
+
+---
+
+# Eclipse Plugin Cleaner
+
+Smart cleaner for duplicate old version plugins in Eclipse plugin directories, with auto-detection, safe backup, and preview mode.
+
+## 🚀 New Features (smart_plugin_cleaner.py)
+
+- **🔍 Auto Detection** - Automatically finds Eclipse plugin directories
+- **📁 Smart Selection** - Provides directory selection menu with manual input support
+- **🛡️ Safe Backup** - Auto-backup before deletion with one-click restore
+- **👀 Preview Mode** - Shows plugins to be deleted before execution
+- **⚡ In-Memory Processing** - No database required, ready to use
+- **🎯 Zero Configuration** - Out of the box, no configuration needed
+- **🔄 Smart Deduplication** - Windows case-insensitive, auto-duplicate removal
+
+## 📦 Usage
+
+### Method 1: Auto Selection (Recommended)
+```bash
+python smart_plugin_cleaner.py
+```
+Automatically scans and displays found plugin directories, select with number.
+
+### Method 2: Direct Directory Specification
+```python
+from smart_plugin_cleaner import SmartPluginCleaner
+
+cleaner = SmartPluginCleaner("Your plugin directory path")
+cleaner.run()
+```
+
+## 🔧 Features
+
+### Auto Path Detection
+Tool automatically searches the following locations:
+- **Windows Registry** - Priority search for Eclipse installation info in registry
+- **Start Menu** - Search Eclipse shortcuts to get installation path
+- **Full Drive Scanning** - Windows scans all drives (A-Z) for Eclipse
+- Current directory and its parent directories
+- Common installation locations: `Program Files/Eclipse`, `Dev/eclipse`, `Tools/eclipse`, etc.
+- User directories: `~/eclipse`, `~/Eclipse`
+- Plugin directories: `plugins/`, `dropins/`
+
+### Safety Mechanisms
+1. **Preview Confirmation** - Shows detailed deletion plan
+2. **Auto Backup** - Backup to timestamped directory before deletion
+3. **Backup Manifest** - Detailed backup record in JSON format
+4. **Error Handling** - Comprehensive exception handling and rollback
+
+### Version Comparison
+- Supports standard version numbers: `1.2.3`, `2.0.1`
+- Supports Eclipse format: `1.2.3.v20200101-1000`
+- Smart parsing: auto-extract main version for comparison
+
+## 📁 Legacy Version (removeChongfuPlugin.py)
+
+> ⚠️ **Deprecated** - Requires MySQL database, complex configuration, recommend using new version
+
+If you need to use the legacy version:
+1. Import `plugins.sql` to database
+2. Modify database connection parameters
+3. Copy to plugin directory and run
+
+## 🛠️ Development Environment
+
+- **Python 3.6+**
+- **No External Dependencies** - Only uses Python standard library
+- **Cross Platform** - Supports Windows, macOS, Linux
+
+## 🔒 Security Notes
+
+- Tool only deletes duplicate old version plugins
+- Creates backup before each operation
+- Supports preview mode to view files to be deleted
+- Keeps latest version to ensure system stability
+
+## 📄 License
+
+This project is licensed under MIT License, free to use and modify.

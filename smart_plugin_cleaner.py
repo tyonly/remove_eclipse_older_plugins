@@ -7,6 +7,7 @@ import shutil
 import json
 from datetime import datetime
 from collections import defaultdict
+import platform
 
 class SmartPluginCleaner:
     def __init__(self, plugin_dir, backup_dir=None):
@@ -17,24 +18,158 @@ class SmartPluginCleaner:
         self.to_keep = []
     
     @staticmethod
+    def find_eclipse_from_registry():
+        """从Windows注册表查找Eclipse安装路径"""
+        if platform.system() != "Windows":
+            return []
+        
+        eclipse_paths = []
+        
+        try:
+            import winreg
+            
+            # Eclipse可能注册的路径
+            registry_paths = [
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Eclipse"),
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Wow6432Node\Eclipse"),
+                (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Eclipse"),
+                (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Wow6432Node\Eclipse"),
+                # 一些常见的Eclipse发行版
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\IBM\SDP"),
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\MyEclipse"),
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Oracle\Java Development Kit"),
+            ]
+            
+            for hkey, subkey in registry_paths:
+                try:
+                    with winreg.OpenKey(hkey, subkey) as key:
+                        # 尝试读取常见的安装路径键值
+                        value_names = ["InstallPath", "Path", "Location", "Home", "EclipseHome"]
+                        
+                        for value_name in value_names:
+                            try:
+                                value, _ = winreg.QueryValueEx(key, value_name)
+                                if value and os.path.exists(value):
+                                    eclipse_paths.append(value)
+                            except:
+                                continue
+                        
+                        # 如果没有找到特定键值，尝试枚举所有值
+                        try:
+                            i = 0
+                            while True:
+                                name, value, _ = winreg.EnumValue(key, i)
+                                if isinstance(value, str) and "eclipse" in value.lower():
+                                    if os.path.exists(value):
+                                        eclipse_paths.append(value)
+                                i += 1
+                        except:
+                            continue
+                            
+                except:
+                    continue
+                    
+        except ImportError:
+            # 如果没有winreg模块，跳过注册表查找
+            pass
+        except Exception as e:
+            print(f"注册表查找出错: {e}")
+        
+        return SmartPluginCleaner._normalize_and_deduplicate_paths(eclipse_paths)
+    
+    @staticmethod
+    def find_eclipse_from_start_menu():
+        """从Windows开始菜单快捷方式查找Eclipse"""
+        if platform.system() != "Windows":
+            return []
+        
+        eclipse_paths = []
+        
+        try:
+            # 常见的开始菜单路径
+            start_menu_paths = [
+                os.path.expandvars(r"%PROGRAMDATA%\Microsoft\Windows\Start Menu\Programs"),
+                os.path.expandvars(r"%APPDATA%\Microsoft\Windows\Start Menu\Programs"),
+            ]
+            
+            for start_menu in start_menu_paths:
+                if not os.path.exists(start_menu):
+                    continue
+                
+                # 递归查找Eclipse快捷方式
+                for root, dirs, files in os.walk(start_menu):
+                    for file in files:
+                        if file.lower().endswith('.lnk') and 'eclipse' in file.lower():
+                            try:
+                                import win32com.client
+                                shell = win32com.client.Dispatch("WScript.Shell")
+                                shortcut = shell.CreateShortCut(os.path.join(root, file))
+                                target_path = shortcut.TargetPath
+                                
+                                if target_path and os.path.exists(target_path):
+                                    # 从eclipse.exe路径推导出安装目录
+                                    if 'eclipse.exe' in target_path.lower():
+                                        eclipse_dir = os.path.dirname(target_path)
+                                        eclipse_paths.append(eclipse_dir)
+                            except:
+                                continue
+                                
+        except Exception as e:
+            print(f"开始菜单查找出错: {e}")
+        
+        return SmartPluginCleaner._normalize_and_deduplicate_paths(eclipse_paths)
+    
+    @staticmethod
     def find_eclipse_plugin_dirs():
         """自动查找Eclipse插件目录"""
         plugin_dirs = []
         
-        # 常见的Eclipse安装路径
-        search_paths = [
-            os.path.expanduser("~/eclipse"),
-            os.path.expanduser("~/Eclipse"),
-            "C:/eclipse",
-            "C:/Eclipse",
-            "D:/eclipse", 
-            "D:/Eclipse",
-            "/opt/eclipse",
-            "/usr/local/eclipse",
-            "/Applications/Eclipse.app/Contents/Eclipse"
-        ]
+        # 1. Windows平台优先从注册表查找
+        if platform.system() == "Windows":
+            registry_paths = SmartPluginCleaner.find_eclipse_from_registry()
+            for path in registry_paths:
+                plugin_dirs.extend(SmartPluginCleaner._check_eclipse_installation(path))
+            
+            # 从开始菜单查找
+            start_menu_paths = SmartPluginCleaner.find_eclipse_from_start_menu()
+            for path in start_menu_paths:
+                plugin_dirs.extend(SmartPluginCleaner._check_eclipse_installation(path))
         
-        # 搜索当前目录及其父目录
+        # 2. 常见的Eclipse安装路径
+        search_paths = []
+        
+        # Windows系统：遍历所有可用盘符
+        if platform.system() == "Windows":
+            import string
+            for drive in string.ascii_uppercase:
+                drive_path = f"{drive}:/"
+                if os.path.exists(drive_path):
+                    # 每个盘符的常见安装位置
+                    search_paths.extend([
+                        f"{drive}:/eclipse",
+                        f"{drive}:/Eclipse",
+                        f"{drive}:/Program Files/Eclipse",
+                        f"{drive}:/Program Files (x86)/Eclipse",
+                        f"{drive}:/ProgramData/Eclipse",
+                        f"{drive}:/Users/%USERNAME%/eclipse",
+                        f"{drive}:/Dev/eclipse",
+                        f"{drive}:/Tools/eclipse",
+                        f"{drive}:/IDE/eclipse"
+                    ])
+        else:
+            # 非Windows系统的常见路径
+            search_paths.extend([
+                os.path.expanduser("~/eclipse"),
+                os.path.expanduser("~/Eclipse"),
+                "/opt/eclipse",
+                "/usr/local/eclipse",
+                "/usr/share/eclipse",
+                "/Applications/Eclipse.app/Contents/Eclipse",
+                "/home/eclipse",
+                "/usr/eclipse"
+            ])
+        
+        # 3. 搜索当前目录及其父目录
         current_dir = os.getcwd()
         for i in range(5):  # 向上搜索5层目录
             search_paths.append(current_dir)
@@ -47,33 +182,129 @@ class SmartPluginCleaner:
         for base_path in search_paths:
             if not os.path.exists(base_path):
                 continue
-                
-            # 查找plugins目录
-            plugins_path = os.path.join(base_path, "plugins")
-            if os.path.exists(plugins_path) and os.path.isdir(plugins_path):
-                # 检查是否真的包含插件文件
-                has_plugins = False
-                try:
-                    for item in os.listdir(plugins_path)[:10]:  # 只检查前10个文件
-                        if item.endswith('.jar') or os.path.isdir(os.path.join(plugins_path, item)):
-                            has_plugins = True
-                            break
-                except:
-                    continue
-                
-                if has_plugins:
-                    plugin_dirs.append(plugins_path)
             
-            # 也搜索dropins目录
-            dropins_path = os.path.join(base_path, "dropins")
-            if os.path.exists(dropins_path) and os.path.isdir(dropins_path):
-                plugin_dirs.append(dropins_path)
+            plugin_dirs.extend(SmartPluginCleaner._check_eclipse_installation(base_path))
         
-        # 去重并排序
-        plugin_dirs = list(set(plugin_dirs))
-        plugin_dirs.sort()
+        # 去重并排序（Windows大小写不敏感处理）
+        plugin_dirs = SmartPluginCleaner._normalize_and_deduplicate_paths(plugin_dirs)
         
         return plugin_dirs
+    
+    @staticmethod
+    def _normalize_and_deduplicate_paths(paths):
+        """标准化路径并去重，处理Windows大小写不敏感问题"""
+        if not paths:
+            return []
+        
+        # Windows平台大小写不敏感，但保持原始显示格式
+        if platform.system() == "Windows":
+            # 使用字典记录已见过的路径（小写键，原始值）
+            seen_paths = {}
+            normalized_paths = []
+            
+            for path in paths:
+                # 标准化路径（处理斜杠、点号等）
+                normalized_path = os.path.normpath(path)
+                # Windows下转换为小写进行比较，但保存原始格式
+                path_key = normalized_path.lower()
+                
+                if path_key not in seen_paths:
+                    seen_paths[path_key] = normalized_path
+                    normalized_paths.append(normalized_path)
+            
+            return sorted(normalized_paths)
+        else:
+            # 非Windows系统，正常去重
+            unique_paths = list(set(os.path.normpath(p) for p in paths))
+            return sorted(unique_paths)
+    
+    @staticmethod
+    def get_available_drives():
+        """获取Windows系统所有可用盘符"""
+        if platform.system() != "Windows":
+            return []
+        
+        drives = []
+        import string
+        
+        for drive in string.ascii_uppercase:
+            drive_path = f"{drive}:/"
+            if os.path.exists(drive_path):
+                drives.append(drive_path)
+        
+        return drives
+    
+    @staticmethod
+    def _check_eclipse_installation(base_path):
+        """检查给定的Eclipse安装路径，返回插件目录列表"""
+        plugin_dirs = []
+        
+        # 查找plugins目录
+        plugins_path = os.path.join(base_path, "plugins")
+        if os.path.exists(plugins_path) and os.path.isdir(plugins_path):
+            # 检查是否真的包含插件文件
+            has_plugins = False
+            try:
+                for item in os.listdir(plugins_path)[:10]:  # 只检查前10个文件
+                    if item.endswith('.jar') or os.path.isdir(os.path.join(plugins_path, item)):
+                        has_plugins = True
+                        break
+            except:
+                pass
+            
+            if has_plugins:
+                plugin_dirs.append(plugins_path)
+        
+        # 也搜索dropins目录
+        dropins_path = os.path.join(base_path, "dropins")
+        if os.path.exists(dropins_path) and os.path.isdir(dropins_path):
+            plugin_dirs.append(dropins_path)
+        
+        return plugin_dirs
+    
+    @staticmethod
+    def _normalize_and_deduplicate_paths(paths):
+        """标准化路径并去重，处理Windows大小写不敏感问题"""
+        if not paths:
+            return []
+        
+        # Windows平台大小写不敏感，但保持原始显示格式
+        if platform.system() == "Windows":
+            # 使用字典记录已见过的路径（小写键，原始值）
+            seen_paths = {}
+            normalized_paths = []
+            
+            for path in paths:
+                # 标准化路径（处理斜杠、点号等）
+                normalized_path = os.path.normpath(path)
+                # Windows下转换为小写进行比较，但保存原始格式
+                path_key = normalized_path.lower()
+                
+                if path_key not in seen_paths:
+                    seen_paths[path_key] = normalized_path
+                    normalized_paths.append(normalized_path)
+            
+            return sorted(normalized_paths)
+        else:
+            # 非Windows系统，正常去重
+            unique_paths = list(set(os.path.normpath(p) for p in paths))
+            return sorted(unique_paths)
+    
+    @staticmethod
+    def get_available_drives():
+        """获取Windows系统所有可用盘符"""
+        if platform.system() != "Windows":
+            return []
+        
+        drives = []
+        import string
+        
+        for drive in string.ascii_uppercase:
+            drive_path = f"{drive}:/"
+            if os.path.exists(drive_path):
+                drives.append(drive_path)
+        
+        return drives
     
     @staticmethod
     def select_plugin_dir():
