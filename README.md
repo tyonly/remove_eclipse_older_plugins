@@ -51,15 +51,6 @@ cleaner.run()
 - 支持Eclipse格式：`1.2.3.v20200101-1000`
 - 智能解析：自动提取主版本号进行比较
 
-## 📁 旧版本说明 (removeChongfuPlugin.py)
-
-> ⚠️ **已废弃** - 需要MySQL数据库，配置复杂，建议使用新版本
-
-如果需要使用旧版本：
-1. 导入 `plugins.sql` 到数据库
-2. 修改数据库连接参数
-3. 复制到插件目录运行
-
 ## 🛠️ 开发环境
 
 - **Python 3.6+**
@@ -131,15 +122,6 @@ Tool automatically searches the following locations:
 - Supports standard version numbers: `1.2.3`, `2.0.1`
 - Supports Eclipse format: `1.2.3.v20200101-1000`
 - Smart parsing: auto-extract main version for comparison
-
-## 📁 Legacy Version (removeChongfuPlugin.py)
-
-> ⚠️ **Deprecated** - Requires MySQL database, complex configuration, recommend using new version
-
-If you need to use the legacy version:
-1. Import `plugins.sql` to database
-2. Modify database connection parameters
-3. Copy to plugin directory and run
 
 ## 🛠️ Development Environment
 
